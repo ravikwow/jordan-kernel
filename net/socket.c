@@ -1401,23 +1401,30 @@ SYSCALL_DEFINE4(socketpair, int, family, int, type, int, protocol,
 		goto out_release_both;
 	}
 
-	fd2 = sock_alloc_fd(&newfile2, flags & O_CLOEXEC);
-	if (unlikely(fd2 < 0)) {
-		err = fd2;
+	err = sock_attach_fd(sock1, newfile1, flags & O_NONBLOCK);
+	if (unlikely(err < 0)) {
 		put_filp(newfile1);
 		put_unused_fd(fd1);
 		goto out_release_both;
 	}
 
-	err = sock_attach_fd(sock1, newfile1, flags & O_NONBLOCK);
-	if (unlikely(err < 0)) {
-		goto out_fd2;
+	fd2 = sock_alloc_fd(&newfile2, flags & O_CLOEXEC);
+	if (unlikely(fd2 < 0)) {
+		err = fd2;
+		fput(newfile1);
+		put_unused_fd(fd1);
+		sock_release(sock2);
+		goto out;
 	}
 
 	err = sock_attach_fd(sock2, newfile2, flags & O_NONBLOCK);
 	if (unlikely(err < 0)) {
+		put_filp(newfile2);
+		put_unused_fd(fd2);
 		fput(newfile1);
-		goto out_fd1;
+		put_unused_fd(fd1);
+		sock_release(sock2);
+		goto out;
 	}
 
 	audit_fd_pair(fd1, fd2);
@@ -1444,16 +1451,6 @@ out_release_1:
 out:
 	trace_socket_socketpair(family, type, protocol, usockvec, err);
 	return err;
-
-out_fd2:
-	put_filp(newfile1);
-	sock_release(sock1);
-out_fd1:
-	put_filp(newfile2);
-	sock_release(sock2);
-	put_unused_fd(fd1);
-	put_unused_fd(fd2);
-	goto out;
 }
 
 /*
