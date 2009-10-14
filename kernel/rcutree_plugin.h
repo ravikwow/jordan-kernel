@@ -461,6 +461,17 @@ void synchronize_rcu_expedited(void)
 EXPORT_SYMBOL_GPL(synchronize_rcu_expedited);
 
 /*
+ * Wait for an rcu-preempt grace period.  We are supposed to expedite the
+ * grace period, but this is the crude slow compatability hack, so just
+ * invoke synchronize_rcu().
+ */
+void synchronize_rcu_expedited(void)
+{
+	synchronize_rcu();
+}
+EXPORT_SYMBOL_GPL(synchronize_rcu_expedited);
+
+/*
  * Check to see if there is any immediate preemptable-RCU-related work
  * to be done.
  */
