@@ -27,6 +27,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
+#include <linux/semaphore.h>
 #include <linux/seq_file.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
@@ -232,7 +233,7 @@ static struct
 	} vc[4];
 
 	struct mutex lock;
-	struct mutex bus_lock;
+	struct semaphore bus_lock;
 
 	unsigned pll_locked;
 
@@ -311,19 +312,19 @@ void dsi_restore_context(void)
 
 void dsi_bus_lock(void)
 {
-	mutex_lock(&dsi.bus_lock);
+	down(&dsi.bus_lock);
 }
 EXPORT_SYMBOL(dsi_bus_lock);
 
 void dsi_bus_unlock(void)
 {
-	mutex_unlock(&dsi.bus_lock);
+	up(&dsi.bus_lock);
 }
 EXPORT_SYMBOL(dsi_bus_unlock);
 
 static bool dsi_bus_is_locked(void)
 {
-	return mutex_is_locked(&dsi.bus_lock);
+	return dsi.bus_lock.count == 0;
 }
 
 static inline int wait_for_bit_change(const struct dsi_reg idx, int bitnum,
@@ -3290,8 +3291,6 @@ static int dsi_update_thread(void *data)
 	u8 num_success = 0;
 
 	while (1) {
-		bool sched;
-
 		wait_event_interruptible(dsi.waitqueue,
 				dsi.update_mode == OMAP_DSS_UPDATE_AUTO ||
 				(dsi.update_mode == OMAP_DSS_UPDATE_MANUAL &&
@@ -3380,19 +3379,12 @@ static int dsi_update_thread(void *data)
 			dsi_perf_show("L4");
 		}
 
-		sched = atomic_read(&dsi.bus_lock.count) < 0;
-
 		complete_all(&dsi.update_completion);
 
 		enable_clocks(0);
 		dsi_enable_pll_clock(0);
 
 		dsi_bus_unlock();
-
-		/* XXX We need to give others chance to get the bus lock. Is
-		 * there a better way for this? */
-		if (dsi.update_mode == OMAP_DSS_UPDATE_AUTO && sched)
-			schedule_timeout_interruptible(1);
 	}
 
 	DSSDBG("update thread exiting\n");
@@ -4234,7 +4226,7 @@ int dsi_init(struct platform_device *pdev)
 	spin_lock_init(&dsi.update_lock);
 
 	mutex_init(&dsi.lock);
-	mutex_init(&dsi.bus_lock);
+	sema_init(&dsi.bus_lock, 1);
 
 #ifdef DSI_CATCH_MISSING_TE
 	init_timer(&dsi.te_timer);
