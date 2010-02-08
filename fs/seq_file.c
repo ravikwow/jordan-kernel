@@ -674,7 +674,6 @@ struct list_head *seq_list_start(struct list_head *head, loff_t pos)
 
 	return NULL;
 }
-
 EXPORT_SYMBOL(seq_list_start);
 
 struct list_head *seq_list_start_head(struct list_head *head, loff_t pos)
@@ -684,7 +683,6 @@ struct list_head *seq_list_start_head(struct list_head *head, loff_t pos)
 
 	return seq_list_start(head, pos - 1);
 }
-
 EXPORT_SYMBOL(seq_list_start_head);
 
 struct list_head *seq_list_next(void *v, struct list_head *head, loff_t *ppos)
@@ -697,46 +695,58 @@ struct list_head *seq_list_next(void *v, struct list_head *head, loff_t *ppos)
 }
 EXPORT_SYMBOL(seq_list_next);
 
-struct list_head *seq_sorted_list_start(struct list_head *head, loff_t *ppos)
+/**
+ * seq_hlist_start - start an iteration of a hlist
+ * @head: the head of the hlist
+ * @pos:  the start position of the sequence
+ *
+ * Called at seq_file->op->start().
+ */
+struct hlist_node *seq_hlist_start(struct hlist_head *head, loff_t pos)
 {
-	struct list_head *lh;
+	struct hlist_node *node;
 
-	list_for_each(lh, head)
-		if ((unsigned long)lh >= *ppos) {
-			*ppos = (unsigned long)lh;
-			return lh;
-		}
+	hlist_for_each(node, head)
+		if (pos-- == 0)
+			return node;
 	return NULL;
 }
-EXPORT_SYMBOL(seq_sorted_list_start);
+EXPORT_SYMBOL(seq_hlist_start);
 
-struct list_head *seq_sorted_list_start_head(struct list_head *head,
-		loff_t *ppos)
+/**
+ * seq_hlist_start_head - start an iteration of a hlist
+ * @head: the head of the hlist
+ * @pos:  the start position of the sequence
+ *
+ * Called at seq_file->op->start(). Call this function if you want to
+ * print a header at the top of the output.
+ */
+struct hlist_node *seq_hlist_start_head(struct hlist_head *head, loff_t pos)
 {
-	struct list_head *lh;
+	if (!pos)
+		return SEQ_START_TOKEN;
 
-	if (!*ppos) {
-		*ppos = (unsigned long)head;
-		return head;
-	}
-	list_for_each(lh, head)
-		if ((unsigned long)lh >= *ppos) {
-			*ppos = (long)lh->prev;
-			return lh->prev;
-		}
-	return NULL;
+	return seq_hlist_start(head, pos - 1);
 }
-EXPORT_SYMBOL(seq_sorted_list_start_head);
+EXPORT_SYMBOL(seq_hlist_start_head);
 
-struct list_head *seq_sorted_list_next(void *p, struct list_head *head,
-		loff_t *ppos)
+/**
+ * seq_hlist_next - move to the next position of the hlist
+ * @v:    the current iterator
+ * @head: the head of the hlist
+ * @pos:  the current posision
+ *
+ * Called at seq_file->op->next().
+ */
+struct hlist_node *seq_hlist_next(void *v, struct hlist_head *head,
+				  loff_t *ppos)
 {
-	struct list_head *lh;
-	void *next;
+	struct hlist_node *node = v;
 
-	lh = ((struct list_head *)p)->next;
-	next = (lh == head) ? NULL : lh;
-	*ppos = next ? ((unsigned long)next) : (-1UL);
-	return next;
+	++*ppos;
+	if (v == SEQ_START_TOKEN)
+		return head->first;
+	else
+		return node->next;
 }
-EXPORT_SYMBOL(seq_sorted_list_next);
+EXPORT_SYMBOL(seq_hlist_next);
