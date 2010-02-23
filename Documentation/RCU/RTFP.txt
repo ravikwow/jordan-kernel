@@ -820,3 +820,39 @@ Revised:
 	Uniprocessor assumptions allow simplified RCU implementation.
 "
 }
+
+@unpublished{PaulEMcKenney2009expeditedRCU
+,Author="Paul E. McKenney"
+,Title="[{PATCH} -tip 0/3] expedited 'big hammer' {RCU} grace periods"
+,month="June"
+,day="25"
+,year="2009"
+,note="Available:
+\url{http://lkml.org/lkml/2009/6/25/306}
+[Viewed August 16, 2009]"
+,annotation="
+	First posting of expedited RCU to be accepted into -tip.
+"
+}
+
+@unpublished{JoshTriplett2009RPHash
+,Author="Josh Triplett"
+,Title="Scalable concurrent hash tables via relativistic programming"
+,month="September"
+,year="2009"
+,note="Linux Plumbers Conference presentation"
+,annotation="
+	RP fun with hash tables.
+"
+}
+
+@phdthesis{MathieuDesnoyersPhD
+, title  = "Low-Impact Operating System Tracing"
+, author = "Mathieu Desnoyers"
+, school = "Ecole Polytechnique de Montr\'{e}al"
+, month  = "December"
+, year   = 2009
+,note="Available:
+\url{http://www.lttng.org/pub/thesis/desnoyers-dissertation-2009-12-v24.pdf}
+[Viewed December 9, 2009]"
+}
