@@ -1391,7 +1391,7 @@ struct super_block {
 	 * Saved mount options for lazy filesystems using
 	 * generic_show_options()
 	 */
-	char *s_options;
+	char __rcu *s_options;
 	/*
 	 * Saved pool identifier for cleancache (-1 means none)
 	 */
