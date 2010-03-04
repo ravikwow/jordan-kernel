@@ -670,9 +670,9 @@ __attribute__((section("_ftrace_events"))) event_##call = {		\
  *	__cpu = smp_processor_id();
  *
  *	if (in_nmi())
- *		raw_data = rcu_dereference(trace_profile_buf_nmi);
+ *		raw_data = rcu_dereference_sched(perf_trace_buf_nmi);
  *	else
- *		raw_data = rcu_dereference(trace_profile_buf);
+ *		raw_data = rcu_dereference_sched(perf_trace_buf);
  *
  *	if (!raw_data)
  *		goto end;
