@@ -44,9 +44,9 @@ struct rcu_ctrlblk {
 };
 
 /* Definition for rcupdate control block. */
-static struct rcu_ctrlblk rcu_ctrlblk = {
-	.donetail	= &rcu_ctrlblk.rcucblist,
-	.curtail	= &rcu_ctrlblk.rcucblist,
+static struct rcu_ctrlblk rcu_sched_ctrlblk = {
+	.donetail	= &rcu_sched_ctrlblk.rcucblist,
+	.curtail	= &rcu_sched_ctrlblk.rcucblist,
 };
 
 static struct rcu_ctrlblk rcu_bh_ctrlblk = {
@@ -105,7 +105,8 @@ void rcu_sched_qs(int cpu)
 	unsigned long flags;
 
 	local_irq_save(flags);
-	if (rcu_qsctr_help(&rcu_ctrlblk) + rcu_qsctr_help(&rcu_bh_ctrlblk))
+	if (rcu_qsctr_help(&rcu_sched_ctrlblk) +
+	    rcu_qsctr_help(&rcu_bh_ctrlblk))
 		raise_softirq(RCU_SOFTIRQ);
 	local_irq_restore(flags);
 }
@@ -175,7 +176,7 @@ static void __rcu_process_callbacks(struct rcu_ctrlblk *rcp)
  */
 static void rcu_process_callbacks(struct softirq_action *unused)
 {
-	__rcu_process_callbacks(&rcu_ctrlblk);
+	__rcu_process_callbacks(&rcu_sched_ctrlblk);
 	__rcu_process_callbacks(&rcu_bh_ctrlblk);
 }
 
@@ -223,7 +224,7 @@ static void __call_rcu(struct rcu_head *head,
  */
 void call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *rcu))
 {
-	__call_rcu(head, func, &rcu_ctrlblk);
+	__call_rcu(head, func, &rcu_sched_ctrlblk);
 }
 EXPORT_SYMBOL_GPL(call_rcu);
 
