@@ -5419,6 +5419,7 @@ int ext4_write_inode(struct inode *inode, int wait)
 				   (unsigned long long)iloc.bh->b_blocknr);
 			err = -EIO;
 		}
+		brelse(iloc.bh);
 	}
 	return err;
 }
