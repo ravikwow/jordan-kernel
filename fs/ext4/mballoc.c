@@ -2069,8 +2069,6 @@ repeat:
 		group = ac->ac_g_ex.fe_group;
 
 		for (i = 0; i < ngroups; group++, i++) {
-			struct ext4_group_info *grp;
-
 			if (group == ngroups)
 				group = 0;
 
