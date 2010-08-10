@@ -1261,6 +1261,33 @@ static noinline_for_stack void update_isolated_counts(struct zone *zone,
 }
 
 /*
+ * Returns true if the caller should wait to clean dirty/writeback pages.
+ *
+ * If we are direct reclaiming for contiguous pages and we do not reclaim
+ * everything in the list, try again and wait for writeback IO to complete.
+ * This will stall high-order allocations noticeably. Only do that when really
+ * need to free the pages under high memory pressure.
+ */
+static inline bool should_reclaim_stall(int priority,
+					struct scan_control *sc)
+{
+	int lumpy_stall_priority;
+
+	/*
+	 * For high-order allocations, there are two stall thresholds.
+	 * High-cost allocations stall immediately where as lower
+	 * order allocations such as stacks require the scanning
+	 * priority to be much higher before stalling.
+	 */
+	if (sc->order > PAGE_ALLOC_COSTLY_ORDER)
+		lumpy_stall_priority = DEF_PRIORITY;
+	else
+		lumpy_stall_priority = DEF_PRIORITY / 3;
+
+	return priority <= lumpy_stall_priority;
+}
+
+/*
  * shrink_inactive_list() is a helper for shrink_zone().  It returns the number
  * of reclaimed pages
  */
@@ -1352,14 +1379,9 @@ static unsigned long shrink_inactive_list(unsigned long max_scan,
 		nr_scanned += nr_scan;
 		nr_freed = shrink_page_list(&page_list, sc, PAGEOUT_IO_ASYNC);
 
-		/*
-		 * If we are direct reclaiming for contiguous pages and we do
-		 * not reclaim everything in the list, try again and wait
-		 * for IO to complete. This will stall high-order allocations
-		 * but that should be acceptable to the caller
-		 */
+		/* Check if we should syncronously wait for writeback */
 		if (nr_freed < nr_taken && !current_is_kswapd() &&
-		    lumpy_reclaim) {
+		    lumpy_reclaim && should_reclaim_stall(priority, sc)) {
 			congestion_wait(BLK_RW_ASYNC, HZ/10);
 
 			/*
