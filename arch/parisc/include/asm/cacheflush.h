@@ -117,6 +117,12 @@ static inline void *kmap(struct page *page)
 
 #define kunmap_atomic(addr, idx)	kunmap_parisc(addr)
 
+static inline void kunmap_atomic_notypecheck(void *addr, enum km_type idx)
+{
+	kunmap_parisc(addr);
+	pagefault_enable();
+}
+
 #define kmap_atomic_pfn(pfn, idx)	page_address(pfn_to_page(pfn))
 #define kmap_atomic_to_page(ptr)	virt_to_page(ptr)
 #endif
