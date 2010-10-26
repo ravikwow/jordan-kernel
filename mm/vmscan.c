@@ -1382,7 +1382,6 @@ static unsigned long shrink_inactive_list(unsigned long max_scan,
 		/* Check if we should syncronously wait for writeback */
 		if (nr_freed < nr_taken && !current_is_kswapd() &&
 		    lumpy_reclaim && should_reclaim_stall(priority, sc)) {
-			congestion_wait(BLK_RW_ASYNC, HZ/10);
 
 			/*
 			 * The attempt at page out may have made some
