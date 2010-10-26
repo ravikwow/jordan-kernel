@@ -312,6 +312,9 @@ struct mm_struct {
 #ifdef CONFIG_ZRAM_FOR_ANDROID
 	int mm_swap_done;
 #endif /* CONFIG_ZRAM_FOR_ANDROID */
+
+	/* How many tasks sharing this mm are OOM_DISABLE */
+	atomic_t oom_disable_count;
 };
 
 /* Future-safe accessor for struct mm_struct's cpu_vm_mask. */
