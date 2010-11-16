@@ -342,7 +342,7 @@ static inline pte_t pte_mkspecial(pte_t pte) { return pte; }
 
 static inline pte_t *pmd_page_vaddr(pmd_t pmd)
 {
-	unsigned long ptr;
+	phys_addr_t ptr;
 
 	ptr = pmd_val(pmd) & ~(PTRS_PER_PTE * sizeof(void *) - 1);
 	ptr += PTRS_PER_PTE * sizeof(void *);
