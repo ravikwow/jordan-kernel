@@ -21,7 +21,7 @@
 /*
  * need to get a 16k page for level 1
  */
-pgd_t *get_pgd_slow(struct mm_struct *mm)
+pgd_t *pgd_alloc(struct mm_struct *mm)
 {
 	pgd_t *new_pgd, *init_pgd;
 	pmd_t *new_pmd, *init_pmd;
@@ -72,7 +72,7 @@ no_pgd:
 	return NULL;
 }
 
-void free_pgd_slow(struct mm_struct *mm, pgd_t *pgd)
+void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 {
 	pmd_t *pmd;
 	pgtable_t pte;
