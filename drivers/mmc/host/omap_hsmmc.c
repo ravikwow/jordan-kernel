@@ -131,6 +131,8 @@
 #define OMAP_MMC_DISABLED_TIMEOUT	1
 #define OMAP_MMC_SLEEP_TIMEOUT		1000
 #define OMAP_MMC_OFF_TIMEOUT		8000
+#define OMAP_MMC_MIN_CLOCK	400000
+#define OMAP_MMC_MAX_CLOCK	52000000
 
 /*
  * One controller can have multiple slots, like on some omap boards using
@@ -1779,8 +1781,8 @@ static int __init omap_hsmmc_probe(struct platform_device *pdev)
 	else
 		mmc->ops	= &omap_hsmmc_ops;
 
-	mmc->f_min	= 400000;
-	mmc->f_max	= 52000000;
+	mmc->f_min	= OMAP_MMC_MIN_CLOCK;
+	mmc->f_max	= OMAP_MMC_MAX_CLOCK;
 
 	spin_lock_init(&host->irq_lock);
 
