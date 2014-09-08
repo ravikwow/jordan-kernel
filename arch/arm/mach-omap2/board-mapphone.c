@@ -1478,6 +1478,32 @@ u32 omap_pmic_voltage_ramp_delay(u8 srid, u8 target_vsel, u8 current_vsel)
 }
 #endif
 
+
+#define WARMRESET 1
+#define COLDRESET 0
+
+static unsigned long reset_status = COLDRESET;
+static struct notifier_block mapphone_pm_reboot_notifier;
+
+/* Choose cold or warm reset
+ *    RST_TIME1>4ms will trigger CPCAP to trigger a system cold reset */
+static void mapphone_pm_set_reset(char cold)
+{
+	if (cold) {
+		/* Configure RST_TIME1 to 6ms  */
+		prm_rmw_mod_reg_bits(OMAP_RSTTIME1_MASK,
+		0xc8<<OMAP_RSTTIME1_SHIFT,
+		OMAP3430_GR_MOD,
+		OMAP3_PRM_RSTTIME_OFFSET);
+	} else {
+		/* Configure RST_TIME1 to 30us  */
+		prm_rmw_mod_reg_bits(OMAP_RSTTIME1_MASK,
+		0x01<<OMAP_RSTTIME1_SHIFT,
+		OMAP3430_GR_MOD,
+		OMAP3_PRM_RSTTIME_OFFSET);
+	}
+}
+
 static void mapphone_pm_init(void)
 {
 	omap3_pm_init_vc(&mapphone_prm_setup);
@@ -1502,7 +1528,99 @@ static void mapphone_pm_init(void)
 	omap3_bypass_cmd(CPCAP_SRI2C_SLAVE_ADDR_VDD2,
 			CPCAP_SMPS_VOL_OPP2, 0x2E);
 
+	if (reset_status == COLDRESET)
+		mapphone_pm_set_reset(1);
+	else
+		mapphone_pm_set_reset(0);
+
+	register_reboot_notifier(&mapphone_pm_reboot_notifier);
+
 }
+
+static int mapphone_pm_reboot_call(struct notifier_block *this,
+			unsigned long code, void *cmd)
+{
+	int result = NOTIFY_DONE;
+
+	if (code == SYS_RESTART) {
+		/* set cold reset */
+		mapphone_pm_set_reset(1);
+	}
+
+	return result;
+}
+
+static struct notifier_block mapphone_pm_reboot_notifier = {
+	.notifier_call = mapphone_pm_reboot_call,
+};
+
+
+static struct proc_dir_entry *proc_entry;
+
+ssize_t reset_proc_read(char *page, char **start, off_t off, \
+   int count, int *eof, void *data)
+{
+	int len;
+    /* don't visit offset */
+	if (off > 0) {
+		*eof = 1;
+		return 0;
+	}
+	len = snprintf(page, sizeof(page), "%x\n", (unsigned int)reset_status);
+	return len;
+}
+
+ssize_t reset_proc_write(struct file *filp, const char __user *buff, \
+  unsigned long len, void *data)
+{
+#define MAX_UL_LEN 8
+	char k_buf[MAX_UL_LEN];
+	int count = min((unsigned long)MAX_UL_LEN, len);
+	int ret;
+
+	if (copy_from_user(k_buf, buff, count)) {
+		ret = -EFAULT;
+		goto err;
+	} else{
+		if (k_buf[0] == '0') {
+			reset_status = COLDRESET;
+			mapphone_pm_set_reset(1);
+			printk(KERN_ERR"switch to cold reset\n");
+		} else if (k_buf[0] == '1') {
+			reset_status = WARMRESET;
+			mapphone_pm_set_reset(0);
+			printk(KERN_ERR"switch to warm reset\n");
+		} else{
+			ret = -EFAULT;
+			goto err;
+		}
+		return count;
+	}
+err:
+	return ret;
+}
+
+static void  reset_proc_init(void)
+{
+	proc_entry = create_proc_entry("reset_proc", 0660, NULL);
+	if (proc_entry == NULL) {
+		printk(KERN_INFO"Couldn't create proc entry\n");
+	} else{
+		proc_entry->read_proc = reset_proc_read;
+		proc_entry->write_proc = reset_proc_write;
+		/* proc_entry->owner = THIS_MODULE; */
+	}
+}
+
+int __init warmreset_init(char *s)
+{
+	/* configure to warmreset */
+	reset_status = WARMRESET;
+	mapphone_pm_set_reset(0);
+	return 1;
+}
+__setup("warmreset_debug=", warmreset_init);
+
 
 /* must match value in drivers/w1/w1_family.h */
 #define W1_EEPROM_DS2502        0x89
@@ -1654,6 +1772,7 @@ static void __init mapphone_bp_model_init(void)
 		clk_enable(clkp);
 #endif
 }
+static struct platform_driver cpcap_charger_connected_driver;
 
 static void mapphone_pm_power_off(void)
 {
@@ -1680,7 +1799,35 @@ static void __init mapphone_power_off_init(void)
 	omap_writew(0x1F, 0x480021D2);
 	pm_power_off = mapphone_pm_power_off;
 
+	platform_driver_register(&cpcap_charger_connected_driver);
 }
+
+static void mapphone_pm_reset(void)
+{
+	arch_reset('h', NULL);
+}
+
+static int cpcap_charger_connected_probe(struct platform_device *pdev)
+{
+	pm_power_off = mapphone_pm_reset;
+	return 0;
+}
+
+static int cpcap_charger_connected_remove(struct platform_device *pdev)
+{
+	pm_power_off = mapphone_pm_power_off;
+	return 0;
+}
+
+static struct platform_driver cpcap_charger_connected_driver = {
+	.probe		= cpcap_charger_connected_probe,
+	.remove		= cpcap_charger_connected_remove,
+	.driver		= {
+		.name	= "cpcap_charger_connected",
+		.owner	= THIS_MODULE,
+	},
+};
+
 
 static void __init mapphone_init(void)
 {
@@ -1726,6 +1873,7 @@ static void __init mapphone_init(void)
 	mapphone_sgx_init();
 	mapphone_power_off_init();
 	mapphone_sim_init();
+	reset_proc_init();
 }
 
 static void __init mapphone_reserve(void)
@@ -1736,19 +1884,13 @@ static void __init mapphone_reserve(void)
 #endif
 }
 
-static void __init mapphone_map_io(void)
-{
-	omap2_set_globals_343x();
-	omap34xx_map_common_io();
-}
-
 MACHINE_START(MAPPHONE, "mapphone_")
 	/* Maintainer: Motorola, Inc. */
 	.phys_io	= 0x48000000,
 	.io_pg_offst	= ((0xfa000000) >> 18) & 0xfffc,
 	.boot_params	= 0x80C00100,
 	.reserve	= mapphone_reserve,
-	.map_io		= mapphone_map_io,
+	.map_io		= omap3_map_io,
 	.init_irq	= mapphone_init_irq,
 	.init_machine	= mapphone_init,
 	.timer		= &omap_timer,

@@ -84,7 +84,7 @@ static unsigned int suspend_freq = 600000;
 #endif
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
-static unsigned int hispeed_freq = 800000;
+static unsigned int hispeed_freq = 1000000;
 
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 90
@@ -142,7 +142,7 @@ static int boostpulse_duration_val = DEFAULT_BOOSTPULSE_DURATION;
  * Max additional time to wait in idle, beyond timer_rate, at speeds above
  * minimum before wakeup to reduce speed, or -1 if unnecessary.
  */
-#define DEFAULT_TIMER_SLACK (70000)
+#define DEFAULT_TIMER_SLACK (40000)
 static int default_timer_slack_val[] = { DEFAULT_TIMER_SLACK };
 static spinlock_t timer_slack_lock;
 static int *timer_slack_vals = default_timer_slack_val;
@@ -154,7 +154,7 @@ static bool io_is_busy = true;
  * The CPU will be boosted to this frequency when the screen is
  * touched. input_boost needs to be enabled.
  */
-#define DEFAULT_INPUT_BOOST_FREQ 800000
+#define DEFAULT_INPUT_BOOST_FREQ 1000000
 int input_boost_freq = DEFAULT_INPUT_BOOST_FREQ;
 extern u64 last_input_time;
 
@@ -169,7 +169,10 @@ extern u64 last_input_time;
 
 static unsigned int up_threshold_any_cpu_load = 50;
 static unsigned int sync_freq = CPU_SYNC_FREQ;
-static unsigned int up_threshold_any_cpu_freq = 1000000;
+static unsigned int up_threshold_any_cpu_freq = 600000;
+
+#define DOWN_LOW_LOAD_THRESHOLD 10
+static bool idle_notifier = false;
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event);
@@ -301,7 +304,7 @@ static unsigned int freq_to_min_sample_time(unsigned int freq)
 	return ret;
 }
 
-static unsigned int calc_freq(struct cpufreq_interactive_cpuinfo *pcpu, 
+static unsigned int calc_freq(struct cpufreq_interactive_cpuinfo *pcpu,
 	unsigned int load)
 {
 	unsigned int max = pcpu->policy->max;
@@ -385,8 +388,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 			if (new_freq < boosted_freq)
 				new_freq = boosted_freq;
 		}
-	}
-	else {
+	} else if (cpu_load <= DOWN_LOW_LOAD_THRESHOLD) {
+			new_freq = pcpu->policy->cpuinfo.min_freq;
+	} else {
 		new_freq = calc_freq(pcpu, cpu_load);
 
 		if (new_freq > boosted_freq &&
@@ -501,7 +505,7 @@ rearm_if_notmax:
 	 * Already set max speed and don't see a need to change that,
 	 * wait until next idle to re-evaluate, don't need timer.
 	 */
-	if (pcpu->target_freq == pcpu->policy->max)
+	if (idle_notifier && pcpu->target_freq == pcpu->policy->max)
 		goto exit;
 
 rearm:
@@ -1352,8 +1356,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		}
 
 		idle_notifier_register(&cpufreq_interactive_idle_nb);
-		cpufreq_register_notifier(
-			&cpufreq_notifier_block, CPUFREQ_TRANSITION_NOTIFIER);
+		if (idle_notifier) {
+			cpufreq_register_notifier(
+				&cpufreq_notifier_block, CPUFREQ_TRANSITION_NOTIFIER);
+		}
 		mutex_unlock(&gov_lock);
 		break;
 
@@ -1374,8 +1380,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			return 0;
 		}
 
-		cpufreq_unregister_notifier(
-			&cpufreq_notifier_block, CPUFREQ_TRANSITION_NOTIFIER);
+		if (idle_notifier) {
+			cpufreq_register_notifier(
+				&cpufreq_notifier_block, CPUFREQ_TRANSITION_NOTIFIER);
+		}
 		idle_notifier_unregister(&cpufreq_interactive_idle_nb);
 		sysfs_remove_group(cpufreq_global_kobject,
 				&interactive_attr_group);
