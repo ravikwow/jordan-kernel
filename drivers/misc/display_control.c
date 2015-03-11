@@ -17,7 +17,7 @@
 #define DISPLAY_CONTROL_VERSION 1
 
 /* This should be improved for both display types */
-u8 display_brightness_value = 0x1f;
+u8 display_brightness_value = 0x19;
 
 u8 display_brightness(void)
 {
