@@ -42,6 +42,7 @@
 #include <linux/usb_ipc.h>
 #include <linux/kthread.h>
 #include <linux/freezer.h>
+#include <linux/wakelock.h>
 
 #ifdef USE_OMAP_SDMA
 #include <plat/dma.h>
@@ -101,6 +102,12 @@ struct dentry *ipc_dbg_dentry;
 #endif /* CONFIG_IPC_USBHOST_DBG */
 
 #ifdef CONFIG_PM
+
+/* We need a wakelock, make the driver works better with Android. */
+#ifdef CONFIG_HAS_WAKELOCK
+static struct wake_lock usb_ipc_wakelock;
+#endif
+
 static void ipc_suspend_work(struct work_struct *work)
 {
 	unsigned long flags;
@@ -113,6 +120,7 @@ static void ipc_suspend_work(struct work_struct *work)
 		wake_up(&kipcd_wait);
 	}
 }
+
 #endif
 
 /*
@@ -258,9 +266,10 @@ static void ipc_events(void)
 #ifdef CONFIG_PM
 			cancel_delayed_work_sync(&usb_ipc_data_param.
 						 suspend_work);
+
 			spin_lock_bh(&usb_ipc_data_param.pm_lock);
 			if (usb_ipc_data_param.sleeping == 0) {
-				usb_ipc_data_param.working = 1;
+			        usb_ipc_data_param.working = 1;
 				LOG_IPC_ACTIVITY(aIpcW, iIpcW, 0x6);
 				ret = usb_submit_urb(&usb_ipc_data_param.
 						   write_urb,
@@ -479,6 +488,9 @@ static void ipc_events(void)
 			pending_events &= ~IPC_PM_SUSPEND;
 			DEBUG("%s @ jiffies=%lu\n", __func__, jiffies);
 			usb_ipc_data_param.allow_suspend = 1;
+#ifdef CONFIG_HAS_WAKELOCK
+			wake_unlock(&usb_ipc_wakelock);
+#endif
 			LOG_IPC_ACTIVITY(aIpcW, iIpcW, jiffies);
 			usb_autopm_put_interface(
 				usb_ifnum_to_if(usb_ipc_data_param.udev,
@@ -492,7 +504,6 @@ static void ipc_events(void)
 						IPC_DATA_CH_NUM));
 		}
 #endif
-
 		spin_lock_irqsave(&ipc_event_lock, flags);
 		pending_events = usb_ipc_data_param.ipc_events;
 		usb_ipc_data_param.ipc_events = 0;
@@ -792,6 +803,9 @@ static int usb_ipc_resume(struct usb_interface *iface)
 	      usb_ipc_data_param.sleeping, usb_ipc_data_param.working);
 	spin_lock_bh(&usb_ipc_data_param.pm_lock);
 	usb_ipc_data_param.allow_suspend = 0;
+#ifdef CONFIG_HAS_WAKELOCK
+	wake_lock(&usb_ipc_wakelock);
+#endif
 	if (iface->cur_altsetting->desc.bInterfaceNumber
 	    == USB_IPC_DATA_IF_NUM) {
 		LOG_IPC_ACTIVITY(aIpcR, iIpcR, jiffies);
@@ -897,7 +911,9 @@ static int __init usb_ipc_init(void)
 		printk(KERN_ERR "%s: Register USB IPC driver failed", __func__);
 		return -1;
 	}
-
+#ifdef CONFIG_HAS_WAKELOCK
+	wake_lock_init(&usb_ipc_wakelock, WAKE_LOCK_SUSPEND, "omap_usb_ipc");
+#endif
 	return 0;
 }
 
@@ -906,6 +922,10 @@ static int __init usb_ipc_init(void)
  */
 static void __exit usb_ipc_exit(void)
 {
+#ifdef CONFIG_HAS_WAKELOCK
+	wake_lock_destroy(&usb_ipc_wakelock);
+#endif
+
 	/* IPC API relevant exit */
 	ipc_api_exit();
 
