@@ -586,7 +586,7 @@ ia32_sys_call_table:
 	.quad compat_sys_settimeofday
 	.quad sys_getgroups16	/* 80 */
 	.quad sys_setgroups16
-	.quad sys32_old_select
+	.quad compat_sys_old_select
 	.quad sys_symlink
 	.quad sys_lstat
 	.quad sys_readlink		/* 85 */
@@ -841,4 +841,5 @@ ia32_sys_call_table:
 	.quad compat_sys_pwritev
 	.quad compat_sys_rt_tgsigqueueinfo	/* 335 */
 	.quad sys_perf_event_open
+	.quad compat_sys_recvmmsg
 ia32_syscall_end:

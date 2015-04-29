@@ -391,6 +391,9 @@ static int alarm_suspend(struct platform_device *pdev, pm_message_t state)
 	hrtimer_cancel(&alarms[
 			ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP].timer);
 
+	hrtimer_cancel(&alarms[ANDROID_ALARM_RTC].timer);
+	hrtimer_cancel(&alarms[ANDROID_ALARM_ELAPSED_REALTIME].timer);
+
 	tmp_queue = &alarms[ANDROID_ALARM_RTC_WAKEUP];
 	if (tmp_queue->first)
 		wakeup_queue = tmp_queue;
@@ -422,7 +425,6 @@ static int alarm_suspend(struct platform_device *pdev, pm_message_t state)
 			rtc_delta.tv_sec, rtc_delta.tv_nsec);
 		if (rtc_current_time + 1 >= rtc_alarm_time) {
 			pr_alarm(SUSPEND, "alarm about to go off\n");
-			memset(&rtc_alarm, 0, sizeof(rtc_alarm));
 			rtc_alarm.enabled = 0;
 			rtc_set_alarm(alarm_rtc_dev, &rtc_alarm);
 
@@ -433,6 +435,10 @@ static int alarm_suspend(struct platform_device *pdev, pm_message_t state)
 									false);
 			update_timer_locked(&alarms[
 				ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP], false);
+			update_timer_locked(&alarms[ANDROID_ALARM_RTC], false);
+			update_timer_locked(&alarms[ANDROID_ALARM_ELAPSED_REALTIME],
+							false);
+
 			err = -EBUSY;
 			spin_unlock_irqrestore(&alarm_slock, flags);
 		}
@@ -442,20 +448,23 @@ static int alarm_suspend(struct platform_device *pdev, pm_message_t state)
 
 static int alarm_resume(struct platform_device *pdev)
 {
-	struct rtc_wkalrm alarm;
+	struct rtc_wkalrm   rtc_alarm;
 	unsigned long       flags;
 
 	pr_alarm(SUSPEND, "alarm_resume(%p)\n", pdev);
 
-	memset(&alarm, 0, sizeof(alarm));
-	alarm.enabled = 0;
-	rtc_set_alarm(alarm_rtc_dev, &alarm);
+	rtc_read_alarm(alarm_rtc_dev, &rtc_alarm);
+	rtc_alarm.enabled = 0;
+	rtc_set_alarm(alarm_rtc_dev, &rtc_alarm);
 
 	spin_lock_irqsave(&alarm_slock, flags);
 	suspended = false;
 	update_timer_locked(&alarms[ANDROID_ALARM_RTC_WAKEUP], false);
 	update_timer_locked(&alarms[ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP],
 									false);
+	update_timer_locked(&alarms[ANDROID_ALARM_RTC], false);
+	update_timer_locked(&alarms[ANDROID_ALARM_ELAPSED_REALTIME], false);
+
 	spin_unlock_irqrestore(&alarm_slock, flags);
 
 	return 0;

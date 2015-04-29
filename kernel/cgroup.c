@@ -51,7 +51,6 @@
 #include <linux/pid_namespace.h>
 #include <linux/idr.h>
 #include <linux/vmalloc.h> /* TODO: replace with more sophisticated array */
-#include <linux/capability.h>
 
 #include <asm/atomic.h>
 
@@ -1529,24 +1528,6 @@ int cgroup_path(const struct cgroup *cgrp, char *buf, int buflen)
 	return 0;
 }
 
-static int cgroup_allow_attach(struct cgroup *cgrp, struct task_struct *tsk)
-{
-	struct cgroup_subsys *ss;
-	int ret;
-
-	for_each_subsys(cgrp->root, ss) {
-		if (ss->allow_attach) {
-			ret = ss->allow_attach(cgrp, tsk);
-			if (ret)
-				return ret;
-		} else {
-			return -EACCES;
-		}
-	}
-
-	return 0;
-}
-
 /**
  * cgroup_attach_task - attach task 'tsk' to cgroup 'cgrp'
  * @cgrp: the cgroup the task is attaching to
@@ -1558,7 +1539,6 @@ static int cgroup_allow_attach(struct cgroup *cgrp, struct task_struct *tsk)
 int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk)
 {
 	int retval = 0;
-	int ret;
 	struct cgroup_subsys *ss;
 	struct cgroup *oldcgrp;
 	struct css_set *cg;
@@ -1575,21 +1555,6 @@ int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk)
 			retval = ss->can_attach(ss, cgrp, tsk, false);
 			if (retval)
 				return retval;
-		} else if (!capable(CAP_SYS_ADMIN)) {
-			const struct cred *cred = current_cred(), *tcred;
-
-			/* No can_attach() - check perms generically */
-			tcred = __task_cred(tsk);
-			if (cred->euid != tcred->uid &&
-			    cred->euid != tcred->suid) {
-				/*
-				 * if the default permission check fails, give each
-				 * cgroup a chance to extend the permission check
-				 */
-				ret = cgroup_allow_attach(cgrp, tsk);
-				if (ret)
-					return ret;
-			}
 		}
 	}
 
@@ -1646,6 +1611,7 @@ int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk)
 static int attach_task_by_pid(struct cgroup *cgrp, u64 pid)
 {
 	struct task_struct *tsk;
+	const struct cred *cred = current_cred(), *tcred;
 	int ret;
 
 	if (pid) {
@@ -1654,6 +1620,14 @@ static int attach_task_by_pid(struct cgroup *cgrp, u64 pid)
 		if (!tsk || tsk->flags & PF_EXITING) {
 			rcu_read_unlock();
 			return -ESRCH;
+		}
+
+		tcred = __task_cred(tsk);
+		if (cred->euid &&
+		    cred->euid != tcred->uid &&
+		    cred->euid != tcred->suid) {
+			rcu_read_unlock();
+			return -EACCES;
 		}
 		get_task_struct(tsk);
 		rcu_read_unlock();
@@ -2962,14 +2936,17 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 
 	for_each_subsys(root, ss) {
 		struct cgroup_subsys_state *css = ss->create(ss, cgrp);
+
 		if (IS_ERR(css)) {
 			err = PTR_ERR(css);
 			goto err_destroy;
 		}
 		init_cgroup_css(css, ss, cgrp);
-		if (ss->use_id)
-			if (alloc_css_id(ss, parent, cgrp))
+		if (ss->use_id) {
+			err = alloc_css_id(ss, parent, cgrp);
+			if (err)
 				goto err_destroy;
+		}
 		/* At error, ->destroy() callback has to free assigned ID. */
 	}
 

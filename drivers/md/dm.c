@@ -2106,6 +2106,7 @@ static int dm_wait_for_completion(struct mapped_device *md, int interruptible)
 				break;
 			}
 			spin_unlock_irqrestore(q->queue_lock, flags);
+
 		} else if (!md_in_flight(md))
 			break;
 

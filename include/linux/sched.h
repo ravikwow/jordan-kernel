@@ -532,6 +532,18 @@ struct signal_struct {
 	int			group_stop_count;
 	unsigned int		flags; /* see SIGNAL_* flags below */
 
+	/*
+	 * PR_SET_CHILD_SUBREAPER marks a process, like a service
+	 * manager, to re-parent orphan (double-forking) child processes
+	 * to this process instead of 'init'. The service manager is
+	 * able to receive SIGCHLD signals and is able to investigate
+	 * the process until it calls wait(). All children of this
+	 * process will inherit a flag if they should look for a
+	 * child_subreaper process at exit.
+	 */
+	unsigned int		is_child_subreaper:1;
+	unsigned int		has_child_subreaper:1;
+
 	/* POSIX.1b Interval Timers */
 	struct list_head posix_timers;
 
@@ -1228,6 +1240,8 @@ struct task_struct {
 				 * execve */
 	unsigned in_iowait:1;
 
+	/* task may not gain privileges */
+	unsigned no_new_privs:1;
 
 	/* Revert to default priority/policy when forking */
 	unsigned sched_reset_on_fork:1;
@@ -1355,7 +1369,7 @@ struct task_struct {
 #endif
 
 	/* Protection of the PI data structures: */
-	spinlock_t pi_lock;
+	raw_spinlock_t pi_lock;
 
 #ifdef CONFIG_RT_MUTEXES
 	/* PI waiters blocked on a rt_mutex held by this task */
@@ -2581,15 +2595,5 @@ extern void clear_kernel_trace_flag_all_tasks(void);
 extern void set_kernel_trace_flag_all_tasks(void);
 
 #endif /* __KERNEL__ */
-
-#ifdef CONFIG_CGROUP_TIMER_SLACK
-extern unsigned long task_get_effective_timer_slack(struct task_struct *tsk);
-#else
-static inline unsigned long task_get_effective_timer_slack(
-  		struct task_struct *tsk)
-{
-	return tsk->timer_slack_ns;
-}
-#endif
 
 #endif

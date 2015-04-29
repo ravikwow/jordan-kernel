@@ -70,6 +70,7 @@ static long __estimate_accuracy(struct timespec *tv)
 
 static long estimate_accuracy(struct timespec *tv)
 {
+	unsigned long ret;
 	struct timespec now;
 
 	/*
@@ -81,8 +82,10 @@ static long estimate_accuracy(struct timespec *tv)
 
 	ktime_get_ts(&now);
 	now = timespec_sub(*tv, now);
-	return min_t(long, __estimate_accuracy(&now),
-		task_get_effective_timer_slack(current));
+	ret = __estimate_accuracy(&now);
+	if (ret < current->timer_slack_ns)
+		return current->timer_slack_ns;
+	return ret;
 }
 
 
@@ -727,6 +730,23 @@ SYSCALL_DEFINE6(pselect6, int, n, fd_set __user *, inp, fd_set __user *, outp,
 	return do_pselect(n, inp, outp, exp, tsp, up, sigsetsize);
 }
 #endif /* HAVE_SET_RESTORE_SIGMASK */
+
+#ifdef __ARCH_WANT_SYS_OLD_SELECT
+struct sel_arg_struct {
+	unsigned long n;
+	fd_set __user *inp, *outp, *exp;
+	struct timeval __user *tvp;
+};
+
+SYSCALL_DEFINE1(old_select, struct sel_arg_struct __user *, arg)
+{
+	struct sel_arg_struct a;
+
+	if (copy_from_user(&a, arg, sizeof(a)))
+		return -EFAULT;
+	return sys_select(a.n, a.inp, a.outp, a.exp, a.tvp);
+}
+#endif
 
 struct poll_list {
 	struct poll_list *next;
