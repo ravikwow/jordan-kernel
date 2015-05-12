@@ -166,7 +166,6 @@ struct pwrkey_data {
 	struct hrtimer longPress_timer;
 	int expired;
 #endif
-	struct delayed_work pwrkey_delayed_work;
 };
 
 #ifdef CONFIG_PM_DBG_DRV
@@ -211,7 +210,6 @@ static void pwrkey_handler(enum cpcap_irqs irq, void *data)
 
 	if (get_deepsleep_mode()) {
 		if (new_state == PWRKEY_RELEASE) {
-			flush_delayed_work(&pwrkey_data->pwrkey_delayed_work);
 			hrtimer_cancel(&pwrkey_data->longPress_timer);
 			wake_lock_timeout(&pwrkey_data->wake_lock, 20);
 			if (pwrkey_data->expired == 1) {
@@ -235,7 +233,6 @@ static void pwrkey_handler(enum cpcap_irqs irq, void *data)
 	if ((new_state < PWRKEY_UNKNOWN) && (new_state != last_state)) {
 #endif
 		wake_lock_timeout(&pwrkey_data->wake_lock, 20);
-		flush_delayed_work(&pwrkey_data->pwrkey_delayed_work);
 		cpcap_broadcast_key_event(cpcap, KEY_END, new_state);
 		pwrkey_data->state = new_state;
 	} else if ((last_state == PWRKEY_RELEASE) &&
@@ -244,24 +241,10 @@ static void pwrkey_handler(enum cpcap_irqs irq, void *data)
 		 * both the press and the release. */
 		wake_lock_timeout(&pwrkey_data->wake_lock,
 				  msecs_to_jiffies(200));
-		if (!delayed_work_pending(&pwrkey_data->pwrkey_delayed_work)) {
-			cpcap_broadcast_key_event(cpcap, KEY_END, PWRKEY_PRESS);
-			cpcap_broadcast_key_event(cpcap, KEY_END, PWRKEY_RELEASE);
-			schedule_delayed_work(&pwrkey_data->pwrkey_delayed_work,
-						msecs_to_jiffies(100));
-		}
+		cpcap_broadcast_key_event(cpcap, KEY_END, PWRKEY_PRESS);
+		cpcap_broadcast_key_event(cpcap, KEY_END, PWRKEY_RELEASE);
 	}
 	cpcap_irq_unmask(cpcap, CPCAP_IRQ_ON);
-}
-
-static void pwrkey_delayed_work_func(struct work_struct *pwrkey_delayed_work)
-{
-	struct pwrkey_data *pwrkey_data =
-		container_of(pwrkey_delayed_work, struct pwrkey_data,
-			     pwrkey_delayed_work.work);
-
-	/* cpcap_broadcast_key_event(pwrkey_data->cpcap, KEY_END, PWRKEY_RELEASE); */
-	printk("Got 2 continuous power key release\n");
 }
 
 static int pwrkey_init(struct cpcap_device *cpcap)
@@ -274,7 +257,6 @@ static int pwrkey_init(struct cpcap_device *cpcap)
 		return -ENOMEM;
 	data->cpcap = cpcap;
 	data->state = PWRKEY_RELEASE;
-	INIT_DELAYED_WORK(&data->pwrkey_delayed_work, pwrkey_delayed_work_func);
 	retval = cpcap_irq_register(cpcap, CPCAP_IRQ_ON, pwrkey_handler, data);
 	if (retval)
 		kfree(data);
@@ -300,7 +282,6 @@ static void pwrkey_remove(struct cpcap_device *cpcap)
 		return;
 	cpcap_irq_free(cpcap, CPCAP_IRQ_ON);
 	wake_lock_destroy(&data->wake_lock);
-	cancel_delayed_work_sync(&data->pwrkey_delayed_work);
 	kfree(data);
 }
 
@@ -749,13 +730,9 @@ int cpcap_irq_suspend(struct cpcap_device *cpcap)
 {
 	struct spi_device *spi = cpcap->spi;
 	struct cpcap_irqdata *data = cpcap->irqdata;
-	struct pwrkey_data *pwrkey_data = NULL;
 
 	disable_irq(spi->irq);
 	flush_work(&data->work);
-	cpcap_irq_get_data(cpcap, CPCAP_IRQ_ON, (void **)&pwrkey_data);
-	if (pwrkey_data)
-		cancel_delayed_work_sync(&pwrkey_data->pwrkey_delayed_work);
 	return 0;
 }
 
