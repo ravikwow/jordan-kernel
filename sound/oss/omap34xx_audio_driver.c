@@ -1654,7 +1654,6 @@ int audio_stop_ssi(struct inode *inode, struct file *file)
 {
 	int minor = MINOR(inode->i_rdev);
 	int ssi;
-	int mode = file->f_flags & O_ACCMODE;
 
 	ssi = (minor == state.dev_dsp) ? STDAC_SSI : CODEC_SSI;
 

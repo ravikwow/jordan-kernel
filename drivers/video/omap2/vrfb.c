@@ -160,7 +160,6 @@ void omap_vrfb_setup(struct vrfb *vrfb, unsigned long paddr,
 		unsigned bytespp, bool yuv_mode)
 {
 	unsigned pixel_size_exp;
-	u16 temp;
 	u16 vrfb_width;
 	u16 vrfb_height;
 	u8 ctx = vrfb->context;

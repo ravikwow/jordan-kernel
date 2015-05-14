@@ -82,7 +82,6 @@ int omap_device_type_proc_read(char *buf, char **start, off_t offset, int count,
 				int *eof, void *data)
 {
 	int len = 0;
-	int type = 0;
 	char *dev_type = NULL;
 
 	if (down_interruptible(&proc_read_lock))

@@ -719,7 +719,6 @@ static ssize_t fsg_store_ro(struct device *dev, struct device_attribute *attr,
 	ssize_t		rc = count;
 	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
 	struct rw_semaphore	*filesem = dev_get_drvdata(dev);
-	unsigned	ro;
 	int	i;
 
         if (sscanf(buf, "%d", &i) != 1)
@@ -749,8 +748,6 @@ static ssize_t fsg_store_nofua(struct device *dev,
 {
 	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
 	unsigned	nofua;
-	int		ret;
-	int	i;
 
 	if (sscanf(buf, "%d", &nofua) != 1)
                 return -EINVAL;

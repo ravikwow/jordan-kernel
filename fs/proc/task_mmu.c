@@ -755,8 +755,7 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 		start_vaddr = end;
 
 		len = min(count, PM_ENTRY_BYTES * pm.pos);
-		if (copy_to_user(buf, pm.buffer, len) < 0) {
-			ret = -EFAULT;
+		if ((ret = copy_to_user(buf, pm.buffer, len)) < 0) {
 			goto out_free;
 		}
 		copied += len;
