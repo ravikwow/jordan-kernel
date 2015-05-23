@@ -7,15 +7,15 @@
 #define S1200M	1200000000
 #define S1000M	1000000000
 #define S800M	800000000
-#define S720M	720000000
-#define S600M	600000000
-#define S550M	550000000
-#define S520M	520000000
-#define S500M	500000000
+#define S720M   720000000
+#define S600M   600000000
+#define S550M   550000000
+#define S520M   520000000
+#define S500M   500000000
 #define S300M	300000000
-#define S250M	250000000
+#define S250M   250000000
 #define S150M	150000000
-#define S125M	125000000
+#define S125M   125000000
 
 /* DSP speeds */
 #define S875M   875000000
@@ -70,7 +70,7 @@ static struct omap_opp omap3630_dsp_rate_table[] = {
         /*OPP3,CPCAP 1.325v*/
         {S660M, VDD1_OPP3, 0x3A, 0x0},
         /*OPP4,CPCAP 1.375v*/
-        {S875M, VDD1_OPP4, 0x3F, 0x0},
+        {S800M, VDD1_OPP4, 0x3E, 0x0},
         /*OPP5,CPCAP 1.375v*/
         {S65M, VDD1_OPP5, 0x3E, 0x0},
 };
