@@ -261,7 +261,7 @@ ENTRY(arm1020_flush_kern_dcache_area)
  *
  * (same as v4wb)
  */
-arm1020_dma_inv_range:
+ENTRY(arm1020_dma_inv_range)
 	mov	ip, #0
 #ifndef CONFIG_CPU_DCACHE_DISABLE
 	tst	r0, #CACHE_DLINESIZE - 1
@@ -291,7 +291,7 @@ arm1020_dma_inv_range:
  *
  * (same as v4wb)
  */
-arm1020_dma_clean_range:
+ENTRY(arm1020_dma_clean_range)
 	mov	ip, #0
 #ifndef CONFIG_CPU_DCACHE_DISABLE
 	bic	r0, r0, #CACHE_DLINESIZE - 1
@@ -359,6 +359,8 @@ ENTRY(arm1020_cache_fns)
 	.long	arm1020_flush_kern_dcache_area
 	.long	arm1020_dma_map_area
 	.long	arm1020_dma_unmap_area
+	.long	arm1020_dma_inv_range
+	.long	arm1020_dma_clean_range
 	.long	arm1020_dma_flush_range
 
 	.align	5
