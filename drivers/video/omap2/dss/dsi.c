@@ -3745,9 +3745,8 @@ static int dsi_do_display_resume(struct omap_dss_device *dssdev)
 	DSSDBG("dsi_do_display_resume\n");
 
 	if (dssdev->state != OMAP_DSS_DISPLAY_SUSPENDED) {
-		DSSERR("dssdev not suspended\n");
-		r = -EINVAL;
-		goto err0;
+		DSSDBG("dsi_do_display_resume FAILED\n");
+		return 0;
 	}
 
 	enable_clocks(1);
@@ -3785,8 +3784,6 @@ err2:
 err1:
 	enable_clocks(0);
 	dsi_enable_pll_clock(0);
-err0:
-	DSSDBG("dsi_do_display_resume FAILED\n");
 	return r;
 }
 
