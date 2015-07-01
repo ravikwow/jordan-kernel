@@ -893,8 +893,8 @@ static int mmc_blk_erase_rq(struct mmc_blk_data *md,
 
 	BUG_ON(mmc_card_blockaddr(card) && (card->csd.erase_size % 512));
 
-	start = ((uint64_t)blk_rq_pos(req)) << 9;
-	end = start + (((uint64_t)blk_rq_sectors(req)) << 9);
+	start = ((uint64_t)blk_rq_pos(req));
+	end = start + (((uint64_t)blk_rq_sectors(req)));
 
 	/*
 	 * The specs talk about the card removing the least

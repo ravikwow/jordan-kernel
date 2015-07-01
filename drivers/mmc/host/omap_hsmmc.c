@@ -1086,7 +1086,6 @@ static int omap_hsmmc_start_dma_transfer(struct omap_hsmmc_host *host,
 
 static void set_data_timeout(struct omap_hsmmc_host *host)
 {
-	unsigned int timeout, cycle_ns;
 	uint32_t reg;
 
 	reg = OMAP_HSMMC_READ(host->base, SYSCTL);
