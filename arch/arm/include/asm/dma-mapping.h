@@ -9,20 +9,24 @@
 #include <asm-generic/dma-coherent.h>
 #include <asm/memory.h>
 
+#ifdef __arch_page_to_dma
+#error Please update to __arch_pfn_to_dma
+#endif
+
 /*
- * page_to_dma/dma_to_virt/virt_to_dma are architecture private functions
- * used internally by the DMA-mapping API to provide DMA addresses. They
- * must not be used by drivers.
+ * dma_to_pfn/pfn_to_dma/dma_to_virt/virt_to_dma are architecture private
+ * functions used internally by the DMA-mapping API to provide DMA
+ * addresses. They must not be used by drivers.
  */
-#ifndef __arch_page_to_dma
-static inline dma_addr_t page_to_dma(struct device *dev, struct page *page)
+#ifndef __arch_pfn_to_dma
+static inline dma_addr_t pfn_to_dma(struct device *dev, unsigned long pfn)
 {
-	return (dma_addr_t)__pfn_to_bus(page_to_pfn(page));
+	return (dma_addr_t)__pfn_to_bus(pfn);
 }
 
-static inline struct page *dma_to_page(struct device *dev, dma_addr_t addr)
+static inline unsigned long dma_to_pfn(struct device *dev, dma_addr_t addr)
 {
-	return pfn_to_page(__bus_to_pfn(addr));
+	return __bus_to_pfn(addr);
 }
 
 static inline void *dma_to_virt(struct device *dev, dma_addr_t addr)
@@ -35,14 +39,14 @@ static inline dma_addr_t virt_to_dma(struct device *dev, void *addr)
 	return (dma_addr_t)__virt_to_bus((unsigned long)(addr));
 }
 #else
-static inline dma_addr_t page_to_dma(struct device *dev, struct page *page)
+static inline dma_addr_t pfn_to_dma(struct device *dev, unsigned long pfn)
 {
-	return __arch_page_to_dma(dev, page);
+	return __arch_pfn_to_dma(dev, pfn);
 }
 
-static inline struct page *dma_to_page(struct device *dev, dma_addr_t addr)
+static inline unsigned long dma_to_pfn(struct device *dev, dma_addr_t addr)
 {
-	return __arch_dma_to_page(dev, addr);
+	return __arch_dma_to_pfn(dev, addr);
 }
 
 static inline void *dma_to_virt(struct device *dev, dma_addr_t addr)
@@ -57,46 +61,57 @@ static inline dma_addr_t virt_to_dma(struct device *dev, void *addr)
 #endif
 
 /*
- * Private support functions: these are not part of the API and are
- * liable to change.  Drivers must not use these.
- */
-extern void dma_cache_maint(const void *kaddr, size_t size, int rw);
-extern void dma_cache_maint_page(struct page *page, unsigned long offset,
-				 size_t size, int rw);
-
-/*
  * The DMA API is built upon the notion of "buffer ownership".  A buffer
  * is either exclusively owned by the CPU (and therefore may be accessed
  * by it) or exclusively owned by the DMA device.  These helper functions
  * represent the transitions between these two ownership states.
  *
- * As above, these are private support functions and not part of the API.
- * Drivers must not use these.
+ * Note, however, that on later ARMs, this notion does not work due to
+ * speculative prefetches.  We model our approach on the assumption that
+ * the CPU does do speculative prefetches, which means we clean caches
+ * before transfers and delay cache invalidation until transfer completion.
+ *
+ * Private support functions: these are not part of the API and are
+ * liable to change.  Drivers must not use these.
  */
 static inline void __dma_single_cpu_to_dev(const void *kaddr, size_t size,
 	enum dma_data_direction dir)
 {
+	extern void ___dma_single_cpu_to_dev(const void *, size_t,
+		enum dma_data_direction);
+
 	if (!arch_is_coherent())
-		dma_cache_maint(kaddr, size, dir);
+		___dma_single_cpu_to_dev(kaddr, size, dir);
 }
 
 static inline void __dma_single_dev_to_cpu(const void *kaddr, size_t size,
 	enum dma_data_direction dir)
 {
-	/* nothing to do */
+	extern void ___dma_single_dev_to_cpu(const void *, size_t,
+		enum dma_data_direction);
+
+	if (!arch_is_coherent())
+		___dma_single_dev_to_cpu(kaddr, size, dir);
 }
 
 static inline void __dma_page_cpu_to_dev(struct page *page, unsigned long off,
 	size_t size, enum dma_data_direction dir)
 {
+	extern void ___dma_page_cpu_to_dev(struct page *, unsigned long,
+		size_t, enum dma_data_direction);
+
 	if (!arch_is_coherent())
-		dma_cache_maint_page(page, off, size, dir);
+		___dma_page_cpu_to_dev(page, off, size, dir);
 }
 
 static inline void __dma_page_dev_to_cpu(struct page *page, unsigned long off,
 	size_t size, enum dma_data_direction dir)
 {
-	/* nothing to do */
+	extern void ___dma_page_dev_to_cpu(struct page *, unsigned long,
+		size_t, enum dma_data_direction);
+
+	if (!arch_is_coherent())
+		___dma_page_dev_to_cpu(page, off, size, dir);
 }
 
 /*
@@ -359,7 +374,7 @@ static inline dma_addr_t dma_map_page(struct device *dev, struct page *page,
 
 	__dma_page_cpu_to_dev(page, offset, size, dir);
 
-	return page_to_dma(dev, page) + offset;
+	return pfn_to_dma(dev, page_to_pfn(page)) + offset;
 }
 
 /**
@@ -399,8 +414,8 @@ static inline void dma_unmap_single(struct device *dev, dma_addr_t handle,
 static inline void dma_unmap_page(struct device *dev, dma_addr_t handle,
 		size_t size, enum dma_data_direction dir)
 {
-	__dma_page_dev_to_cpu(dma_to_page(dev, handle), handle & ~PAGE_MASK,
-		size, dir);
+	__dma_page_dev_to_cpu(pfn_to_page(dma_to_pfn(dev, handle)),
+		handle & ~PAGE_MASK, size, dir);
 }
 #endif /* CONFIG_DMABOUNCE */
 

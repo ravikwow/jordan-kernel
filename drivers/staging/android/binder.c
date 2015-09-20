@@ -34,6 +34,8 @@
 #include <linux/vmalloc.h>
 #include <linux/security.h>
 
+#include <linux/kthread.h>
+
 #include "binder.h"
 
 static DEFINE_MUTEX(binder_lock);
@@ -49,7 +51,9 @@ static struct dentry *binder_debugfs_dir_entry_proc;
 static struct binder_node *binder_context_mgr_node;
 static uid_t binder_context_mgr_uid = -1;
 static int binder_last_id;
-static struct workqueue_struct *binder_deferred_workqueue;
+
+static struct task_struct *binder_deferred_task;
+static DECLARE_WAIT_QUEUE_HEAD(binder_deferred_wq);
 
 #define BINDER_DEBUG_ENTRY(name) \
 static int binder_##name##_open(struct inode *inode, struct file *file) \
@@ -3140,14 +3144,23 @@ static void binder_deferred_release(struct binder_proc *proc)
 	kfree(proc);
 }
 
-static void binder_deferred_func(struct work_struct *work)
+static int binder_deferred_thread(void *ignore)
 {
 	struct binder_proc *proc;
 	struct files_struct *files;
-
+	int ret;
 	int defer;
-	do {
+
+	for (;;) {
+
+		do {
+			ret = wait_event_interruptible(binder_deferred_wq, !hlist_empty(&binder_deferred_list));
+		} while (ret == -ERESTARTSYS);
+		if (kthread_should_stop())
+			break;
+
 		mutex_lock(&binder_lock);
+
 		mutex_lock(&binder_deferred_lock);
 		if (!hlist_empty(&binder_deferred_list)) {
 			proc = hlist_entry(binder_deferred_list.first,
@@ -3162,24 +3175,29 @@ static void binder_deferred_func(struct work_struct *work)
 		mutex_unlock(&binder_deferred_lock);
 
 		files = NULL;
-		if (defer & BINDER_DEFERRED_PUT_FILES) {
-			files = proc->files;
-			if (files)
-				proc->files = NULL;
+
+		if(proc != NULL) {
+
+			if (defer & BINDER_DEFERRED_PUT_FILES) {
+				files = proc->files;
+				if (files)
+					proc->files = NULL;
+			}
+
+			if (defer & BINDER_DEFERRED_FLUSH)
+				binder_deferred_flush(proc);
+
+			if (defer & BINDER_DEFERRED_RELEASE)
+				binder_deferred_release(proc); /* frees proc */
 		}
-
-		if (defer & BINDER_DEFERRED_FLUSH)
-			binder_deferred_flush(proc);
-
-		if (defer & BINDER_DEFERRED_RELEASE)
-			binder_deferred_release(proc); /* frees proc */
 
 		mutex_unlock(&binder_lock);
 		if (files)
 			put_files_struct(files);
-	} while (proc);
+	}
+
+	return 0;
 }
-static DECLARE_WORK(binder_deferred_work, binder_deferred_func);
 
 static void
 binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer)
@@ -3189,9 +3207,9 @@ binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer)
 	if (hlist_unhashed(&proc->deferred_work_node)) {
 		hlist_add_head(&proc->deferred_work_node,
 				&binder_deferred_list);
-		queue_work(binder_deferred_workqueue, &binder_deferred_work);
 	}
 	mutex_unlock(&binder_deferred_lock);
+	wake_up_interruptible(&binder_deferred_wq);
 }
 
 static void print_binder_transaction(struct seq_file *m, const char *prefix,
@@ -3632,10 +3650,6 @@ static int __init binder_init(void)
 {
 	int ret;
 
-	binder_deferred_workqueue = create_singlethread_workqueue("binder");
-	if (!binder_deferred_workqueue)
-		return -ENOMEM;
-
 	binder_debugfs_dir_entry_root = debugfs_create_dir("binder", NULL);
 	if (binder_debugfs_dir_entry_root)
 		binder_debugfs_dir_entry_proc = debugfs_create_dir("proc",
@@ -3668,6 +3682,13 @@ static int __init binder_init(void)
 				    &binder_transaction_log_failed,
 				    &binder_transaction_log_fops);
 	}
+
+	if (ret == 0) {
+		binder_deferred_task = kthread_run(binder_deferred_thread, NULL, "binder_deferred_thread");
+		if (binder_deferred_task == NULL)
+			ret = PTR_ERR(binder_deferred_task);
+	}
+
 	return ret;
 }
 

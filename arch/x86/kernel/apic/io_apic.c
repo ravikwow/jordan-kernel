@@ -2432,9 +2432,13 @@ asmlinkage void smp_irq_move_cleanup_interrupt(void)
 			continue;
 
 		cfg = irq_cfg(irq);
+<<<<<<< HEAD
 		spin_lock(&desc->lock);
 		if (!cfg->move_cleanup_count)
 			goto unlock;
+=======
+		raw_spin_lock(&desc->lock);
+>>>>>>> 239007b... genirq: Convert irq_desc.lock to raw_spinlock
 
 		if (vector == cfg->vector && cpumask_test_cpu(me, cfg->domain))
 			goto unlock;
@@ -2454,7 +2458,7 @@ asmlinkage void smp_irq_move_cleanup_interrupt(void)
 		__get_cpu_var(vector_irq)[vector] = -1;
 		cfg->move_cleanup_count--;
 unlock:
-		spin_unlock(&desc->lock);
+		raw_spin_unlock(&desc->lock);
 	}
 
 	irq_exit();

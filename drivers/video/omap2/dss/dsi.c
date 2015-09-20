@@ -27,6 +27,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
+#include <linux/semaphore.h>
 #include <linux/seq_file.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
@@ -232,7 +233,7 @@ static struct
 	} vc[4];
 
 	struct mutex lock;
-	struct mutex bus_lock;
+	struct semaphore bus_lock;
 
 	unsigned pll_locked;
 
@@ -311,15 +312,20 @@ void dsi_restore_context(void)
 
 void dsi_bus_lock(void)
 {
-	mutex_lock(&dsi.bus_lock);
+	down(&dsi.bus_lock);
 }
 EXPORT_SYMBOL(dsi_bus_lock);
 
 void dsi_bus_unlock(void)
 {
-	mutex_unlock(&dsi.bus_lock);
+	up(&dsi.bus_lock);
 }
 EXPORT_SYMBOL(dsi_bus_unlock);
+
+static bool dsi_bus_is_locked(void)
+{
+	return dsi.bus_lock.count == 0;
+}
 
 static inline int wait_for_bit_change(const struct dsi_reg idx, int bitnum,
 		int value)
@@ -809,7 +815,7 @@ static unsigned long dsi_fclk_rate(void)
 {
 	unsigned long r;
 
-	if (dss_get_dsi_clk_source() == 0) {
+	if (dss_get_dsi_clk_source() == DSS_SRC_DSS1_ALWON_FCLK) {
 		/* DSI FCLK source is DSS1_ALWON_FCK, which is dss1_fck */
 		r = dss_clk_get_rate(DSS_CLK_FCK1);
 	} else {
@@ -1266,17 +1272,19 @@ void dsi_dump_clocks(struct seq_file *s)
 	seq_printf(s,	"dsi1_pll_fck\t%-16luregm3 %u\t(%s)\n",
 			cinfo->dsi1_pll_fclk,
 			cinfo->regm3,
-			dss_get_dispc_clk_source() == 0 ? "off" : "on");
+			dss_get_dispc_clk_source() == DSS_SRC_DSS1_ALWON_FCLK ?
+			"off" : "on");
 
 	seq_printf(s,	"dsi2_pll_fck\t%-16luregm4 %u\t(%s)\n",
 			cinfo->dsi2_pll_fclk,
 			cinfo->regm4,
-			dss_get_dsi_clk_source() == 0 ? "off" : "on");
+			dss_get_dsi_clk_source() == DSS_SRC_DSS1_ALWON_FCLK ?
+			"off" : "on");
 
 	seq_printf(s,	"- DSI -\n");
 
 	seq_printf(s,	"dsi fclk source = %s\n",
-			dss_get_dsi_clk_source() == 0 ?
+			dss_get_dsi_clk_source() == DSS_SRC_DSS1_ALWON_FCLK ?
 			"dss1_alwon_fclk" : "dsi2_pll_fclk");
 
 	seq_printf(s,	"DSI_FCLK\t%lu\n", dsi_fclk_rate());
@@ -1954,7 +1962,7 @@ static int dsi_vc_send_bta(int channel)
 			(dsi.debug_write || dsi.debug_read))
 		DSSDBG("dsi_vc_send_bta %d\n", channel);
 
-	WARN_ON(!mutex_is_locked(&dsi.bus_lock));
+	WARN_ON(!dsi_bus_is_locked());
 
 	if (REG_GET(DSI_VC_CTRL(channel), 20, 20)) {	/* RX_FIFO_NOT_EMPTY */
 		DSSERR("rx fifo not empty when sending BTA, dumping data:\n");
@@ -2017,7 +2025,7 @@ static inline void dsi_vc_write_long_header(int channel, u8 data_type,
 	u32 val;
 	u8 data_id;
 
-	WARN_ON(!mutex_is_locked(&dsi.bus_lock));
+	WARN_ON(!dsi_bus_is_locked());
 
 	/*data_id = data_type | channel << 6; */
 	data_id = data_type | dsi.vc[channel].dest_per << 6;
@@ -2127,7 +2135,7 @@ static int dsi_vc_send_short(int channel, u8 data_type, u16 data, u8 ecc)
 	u32 r;
 	u8 data_id;
 
-	WARN_ON(!mutex_is_locked(&dsi.bus_lock));
+	WARN_ON(!dsi_bus_is_locked());
 
 	if (dsi.debug_write)
 		DSSDBG("dsi_vc_send_short(ch%d, dt %#x, b1 %#x, b2 %#x)\n",
@@ -3035,7 +3043,7 @@ static int dsi_set_update_mode(struct omap_dss_device *dssdev,
 	int r = 0;
 	int i;
 
-	WARN_ON(!mutex_is_locked(&dsi.bus_lock));
+	WARN_ON(!dsi_bus_is_locked());
 
 	if (dsi.update_mode != mode) {
 		dsi.update_mode = mode;
@@ -3283,8 +3291,6 @@ static int dsi_update_thread(void *data)
 	u8 num_success = 0;
 
 	while (1) {
-		bool sched;
-
 		wait_event_interruptible(dsi.waitqueue,
 				dsi.update_mode == OMAP_DSS_UPDATE_AUTO ||
 				(dsi.update_mode == OMAP_DSS_UPDATE_MANUAL &&
@@ -3373,19 +3379,12 @@ static int dsi_update_thread(void *data)
 			dsi_perf_show("L4");
 		}
 
-		sched = atomic_read(&dsi.bus_lock.count) < 0;
-
 		complete_all(&dsi.update_completion);
 
 		enable_clocks(0);
 		dsi_enable_pll_clock(0);
 
 		dsi_bus_unlock();
-
-		/* XXX We need to give others chance to get the bus lock. Is
-		 * there a better way for this? */
-		if (dsi.update_mode == OMAP_DSS_UPDATE_AUTO && sched)
-			schedule_timeout_interruptible(1);
 	}
 
 	DSSDBG("update thread exiting\n");
@@ -3501,7 +3500,8 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 	if (r)
 		goto err1;
 
-	dss_select_clk_source(true, true);
+	dss_select_dispc_clk_source(DSS_SRC_DSI1_PLL_FCLK);
+	dss_select_dsi_clk_source(DSS_SRC_DSI2_PLL_FCLK);
 
 	DSSDBG("PLL OK\n");
 
@@ -3546,7 +3546,8 @@ err4:
 err3:
 	dsi_complexio_uninit();
 err2:
-	dss_select_clk_source(false, false);
+	dss_select_dispc_clk_source(DSS_SRC_DSS1_ALWON_FCLK);
+	dss_select_dsi_clk_source(DSS_SRC_DSS1_ALWON_FCLK);
 err1:
 	dsi_pll_uninit();
 err0:
@@ -3558,7 +3559,8 @@ static void dsi_display_uninit_dsi(struct omap_dss_device *dssdev)
 	if (dssdev->driver->disable)
 		dssdev->driver->disable(dssdev);
 
-	dss_select_clk_source(false, false);
+	dss_select_dispc_clk_source(DSS_SRC_DSS1_ALWON_FCLK);
+	dss_select_dsi_clk_source(DSS_SRC_DSS1_ALWON_FCLK);
 	dsi_complexio_uninit();
 	dsi_pll_uninit();
 }
@@ -3745,9 +3747,8 @@ static int dsi_do_display_resume(struct omap_dss_device *dssdev)
 	DSSDBG("dsi_do_display_resume\n");
 
 	if (dssdev->state != OMAP_DSS_DISPLAY_SUSPENDED) {
-		DSSERR("dssdev not suspended\n");
-		r = -EINVAL;
-		goto err0;
+		DSSDBG("dsi_do_display_resume FAILED\n");
+		return 0;
 	}
 
 	enable_clocks(1);
@@ -3785,8 +3786,6 @@ err2:
 err1:
 	enable_clocks(0);
 	dsi_enable_pll_clock(0);
-err0:
-	DSSDBG("dsi_do_display_resume FAILED\n");
 	return r;
 }
 
@@ -4227,7 +4226,7 @@ int dsi_init(struct platform_device *pdev)
 	spin_lock_init(&dsi.update_lock);
 
 	mutex_init(&dsi.lock);
-	mutex_init(&dsi.bus_lock);
+	sema_init(&dsi.bus_lock, 1);
 
 #ifdef DSI_CATCH_MISSING_TE
 	init_timer(&dsi.te_timer);

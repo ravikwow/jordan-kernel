@@ -406,9 +406,15 @@ handle_tlbmiss(struct pt_regs *regs, unsigned long writeaccess,
 		local_flush_tlb_one(get_asid(), address & PAGE_MASK);
 #endif
 
+<<<<<<< HEAD
 	update_mmu_cache(NULL, address, entry);
 	ret = 0;
 out:
 	trace_page_fault_nosem_exit();
 	return ret;
+=======
+	update_mmu_cache(NULL, address, pte);
+
+	return 0;
+>>>>>>> 4b3073e... MM: Pass a PTE pointer to update_mmu_cache() rather than the PTE itself
 }

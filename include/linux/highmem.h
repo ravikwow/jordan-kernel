@@ -2,6 +2,7 @@
 #define _LINUX_HIGHMEM_H
 
 #include <linux/fs.h>
+#include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/uaccess.h>
 
@@ -66,7 +67,7 @@ static inline void *kmap_atomic(struct page *page, enum km_type idx)
 }
 #define kmap_atomic_prot(page, idx, prot)	kmap_atomic(page, idx)
 
-#define kunmap_atomic(addr, idx)	do { pagefault_enable(); } while (0)
+#define kunmap_atomic_notypecheck(addr, idx)	do { pagefault_enable(); } while (0)
 #define kmap_atomic_pfn(pfn, idx)	kmap_atomic(pfn_to_page(pfn), (idx))
 #define kmap_atomic_to_page(ptr)	virt_to_page(ptr)
 
@@ -74,6 +75,13 @@ static inline void *kmap_atomic(struct page *page, enum km_type idx)
 #endif
 
 #endif /* CONFIG_HIGHMEM */
+
+/* Prevent people trying to call kunmap_atomic() as if it were kunmap() */
+/* kunmap_atomic() should get the return value of kmap_atomic, not the page. */
+#define kunmap_atomic(addr, idx) do { \
+		BUILD_BUG_ON(__same_type((addr), struct page *)); \
+		kunmap_atomic_notypecheck((addr), (idx)); \
+	} while (0)
 
 /* when CONFIG_HIGHMEM is not set these will be plain clear/copy_page */
 #ifndef clear_user_highpage
@@ -183,8 +191,8 @@ static inline void copy_user_highpage(struct page *to, struct page *from,
 	vfrom = kmap_atomic(from, KM_USER0);
 	vto = kmap_atomic(to, KM_USER1);
 	copy_user_page(vto, vfrom, vaddr, to);
-	kunmap_atomic(vfrom, KM_USER0);
 	kunmap_atomic(vto, KM_USER1);
+	kunmap_atomic(vfrom, KM_USER0);
 }
 
 #endif
@@ -196,8 +204,8 @@ static inline void copy_highpage(struct page *to, struct page *from)
 	vfrom = kmap_atomic(from, KM_USER0);
 	vto = kmap_atomic(to, KM_USER1);
 	copy_page(vto, vfrom);
-	kunmap_atomic(vfrom, KM_USER0);
 	kunmap_atomic(vto, KM_USER1);
+	kunmap_atomic(vfrom, KM_USER0);
 }
 
 #endif /* _LINUX_HIGHMEM_H */

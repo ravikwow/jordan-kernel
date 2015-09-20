@@ -525,11 +525,12 @@ extern void flush_tlb_kernel_range(unsigned long start, unsigned long end);
 #endif
 
 /*
- * if PG_dcache_dirty is set for the page, we need to ensure that any
+ * If PG_dcache_clean is not set for the page, we need to ensure that any
  * cache entries for the kernels virtual memory range are written
  * back to the page.
  */
-extern void update_mmu_cache(struct vm_area_struct *vma, unsigned long addr, pte_t pte);
+extern void update_mmu_cache(struct vm_area_struct *vma, unsigned long addr,
+	pte_t *ptep);
 
 #endif
 

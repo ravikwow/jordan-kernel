@@ -149,7 +149,7 @@ int show_interrupts(struct seq_file *p, void *v)
 	if (!desc)
 		return 0;
 
-	spin_lock_irqsave(&desc->lock, flags);
+	raw_spin_lock_irqsave(&desc->lock, flags);
 	for_each_online_cpu(j)
 		any_count |= kstat_irqs_cpu(i, j);
 	action = desc->action;
@@ -170,7 +170,7 @@ int show_interrupts(struct seq_file *p, void *v)
 
 	seq_putc(p, '\n');
 out:
-	spin_unlock_irqrestore(&desc->lock, flags);
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
 	return 0;
 }
 
@@ -274,3 +274,96 @@ void smp_generic_interrupt(struct pt_regs *regs)
 }
 
 EXPORT_SYMBOL_GPL(vector_used_by_percpu_irq);
+<<<<<<< HEAD
+=======
+
+#ifdef CONFIG_HOTPLUG_CPU
+/* A cpu has been removed from cpu_online_mask.  Reset irq affinities. */
+void fixup_irqs(void)
+{
+	unsigned int irq, vector;
+	static int warned;
+	struct irq_desc *desc;
+
+	for_each_irq_desc(irq, desc) {
+		int break_affinity = 0;
+		int set_affinity = 1;
+		const struct cpumask *affinity;
+
+		if (!desc)
+			continue;
+		if (irq == 2)
+			continue;
+
+		/* interrupt's are disabled at this point */
+		raw_spin_lock(&desc->lock);
+
+		affinity = desc->affinity;
+		if (!irq_has_action(irq) ||
+		    cpumask_equal(affinity, cpu_online_mask)) {
+			raw_spin_unlock(&desc->lock);
+			continue;
+		}
+
+		/*
+		 * Complete the irq move. This cpu is going down and for
+		 * non intr-remapping case, we can't wait till this interrupt
+		 * arrives at this cpu before completing the irq move.
+		 */
+		irq_force_complete_move(irq);
+
+		if (cpumask_any_and(affinity, cpu_online_mask) >= nr_cpu_ids) {
+			break_affinity = 1;
+			affinity = cpu_all_mask;
+		}
+
+		if (!(desc->status & IRQ_MOVE_PCNTXT) && desc->chip->mask)
+			desc->chip->mask(irq);
+
+		if (desc->chip->set_affinity)
+			desc->chip->set_affinity(irq, affinity);
+		else if (!(warned++))
+			set_affinity = 0;
+
+		if (!(desc->status & IRQ_MOVE_PCNTXT) && desc->chip->unmask)
+			desc->chip->unmask(irq);
+
+		raw_spin_unlock(&desc->lock);
+
+		if (break_affinity && set_affinity)
+			printk("Broke affinity for irq %i\n", irq);
+		else if (!set_affinity)
+			printk("Cannot set affinity for irq %i\n", irq);
+	}
+
+	/*
+	 * We can remove mdelay() and then send spuriuous interrupts to
+	 * new cpu targets for all the irqs that were handled previously by
+	 * this cpu. While it works, I have seen spurious interrupt messages
+	 * (nothing wrong but still...).
+	 *
+	 * So for now, retain mdelay(1) and check the IRR and then send those
+	 * interrupts to new targets as this cpu is already offlined...
+	 */
+	mdelay(1);
+
+	for (vector = FIRST_EXTERNAL_VECTOR; vector < NR_VECTORS; vector++) {
+		unsigned int irr;
+
+		if (__get_cpu_var(vector_irq)[vector] < 0)
+			continue;
+
+		irr = apic_read(APIC_IRR + (vector / 32 * 0x10));
+		if (irr  & (1 << (vector % 32))) {
+			irq = __get_cpu_var(vector_irq)[vector];
+
+			desc = irq_to_desc(irq);
+			raw_spin_lock(&desc->lock);
+			if (desc->chip->retrigger)
+				desc->chip->retrigger(irq);
+			raw_spin_unlock(&desc->lock);
+		}
+	}
+}
+#endif
+>>>>>>> 239007b... genirq: Convert irq_desc.lock to raw_spinlock

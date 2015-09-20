@@ -552,7 +552,7 @@ void __init omap_vram_reserve_sdram(void)
 	if (!size)
 		return;
 
-	size = PAGE_ALIGN(size);
+	size = ALIGN(size, SZ_2M);
 
 	bdata = NODE_DATA(0)->bdata;
 	sdram_start = bdata->node_min_pfn << PAGE_SHIFT;

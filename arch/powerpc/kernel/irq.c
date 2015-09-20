@@ -222,6 +222,43 @@ skip:
 #endif /* CONFIG_PPC32 && CONFIG_TAU_INT*/
 		seq_printf(p, "BAD: %10u\n", ppc_spurious_interrupts);
 	}
+<<<<<<< HEAD
+=======
+
+	desc = irq_to_desc(i);
+	if (!desc)
+		return 0;
+
+	raw_spin_lock_irqsave(&desc->lock, flags);
+
+	action = desc->action;
+	if (!action || !action->handler)
+		goto skip;
+
+	seq_printf(p, "%3d: ", i);
+#ifdef CONFIG_SMP
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", kstat_irqs_cpu(i, j));
+#else
+	seq_printf(p, "%10u ", kstat_irqs(i));
+#endif /* CONFIG_SMP */
+
+	if (desc->chip)
+		seq_printf(p, " %s ", desc->chip->name);
+	else
+		seq_puts(p, "  None      ");
+
+	seq_printf(p, "%s", (desc->status & IRQ_LEVEL) ? "Level " : "Edge  ");
+	seq_printf(p, "    %s", action->name);
+
+	for (action = action->next; action; action = action->next)
+		seq_printf(p, ", %s", action->name);
+	seq_putc(p, '\n');
+
+skip:
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
+
+>>>>>>> 239007b... genirq: Convert irq_desc.lock to raw_spinlock
 	return 0;
 }
 
@@ -1061,9 +1098,18 @@ static int virq_debug_show(struct seq_file *m, void *private)
 	seq_printf(m, "%-5s  %-7s  %-15s  %s\n", "virq", "hwirq",
 		      "chip name", "host name");
 
+<<<<<<< HEAD
 	for (i = 1; i < NR_IRQS; i++) {
 		desc = get_irq_desc(i);
 		spin_lock_irqsave(&desc->lock, flags);
+=======
+	for (i = 1; i < nr_irqs; i++) {
+		desc = irq_to_desc(i);
+		if (!desc)
+			continue;
+
+		raw_spin_lock_irqsave(&desc->lock, flags);
+>>>>>>> 239007b... genirq: Convert irq_desc.lock to raw_spinlock
 
 		if (desc->action && desc->action->handler) {
 			seq_printf(m, "%5d  ", i);
@@ -1082,7 +1128,7 @@ static int virq_debug_show(struct seq_file *m, void *private)
 			seq_printf(m, "%s\n", p);
 		}
 
-		spin_unlock_irqrestore(&desc->lock, flags);
+		raw_spin_unlock_irqrestore(&desc->lock, flags);
 	}
 
 	return 0;

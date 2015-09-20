@@ -901,11 +901,7 @@ static int __init alignment_init(void)
 #ifdef CONFIG_PROC_FS
 	struct proc_dir_entry *res;
 
-	res = proc_mkdir("cpu", NULL);
-	if (!res)
-		return -ENOMEM;
-
-	res = create_proc_entry("alignment", S_IWUSR | S_IRUGO, res);
+	res = create_proc_entry("cpu/alignment", S_IWUSR | S_IRUGO, NULL);
 	if (!res)
 		return -ENOMEM;
 
@@ -929,8 +925,10 @@ static int __init alignment_init(void)
 		ai_usermode = UM_FIXUP;
 	}
 
-	hook_fault_code(1, do_alignment, SIGILL, "alignment exception");
-	hook_fault_code(3, do_alignment, SIGILL, "alignment exception");
+	hook_fault_code(1, do_alignment, SIGBUS, BUS_ADRALN,
+			"alignment exception");
+	hook_fault_code(3, do_alignment, SIGBUS, BUS_ADRALN,
+			"alignment exception");
 
 	return 0;
 }

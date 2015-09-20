@@ -61,17 +61,27 @@
 	.endm
 
 /*
- * cache_line_size - get the cache line size from the CSIDR register
- * (available on ARMv7+). It assumes that the CSSR register was configured
- * to access the L1 data cache CSIDR.
+ * dcache_line_size - get the minimum D-cache line size from the CTR register
+ * on ARMv7.
  */
 	.macro	dcache_line_size, reg, tmp
-	mrc	p15, 1, \tmp, c0, c0, 0		@ read CSIDR
-	and	\tmp, \tmp, #7			@ cache line size encoding
-	mov	\reg, #16			@ size offset
+	mrc	p15, 0, \tmp, c0, c0, 1		@ read ctr
+	lsr	\tmp, \tmp, #16
+	and	\tmp, \tmp, #0xf		@ cache line size encoding
+	mov	\reg, #4			@ bytes per word
 	mov	\reg, \reg, lsl \tmp		@ actual cache line size
 	.endm
 
+/*
+ * icache_line_size - get the minimum I-cache line size from the CTR register
+ * on ARMv7.
+ */
+	.macro	icache_line_size, reg, tmp
+	mrc	p15, 0, \tmp, c0, c0, 1		@ read ctr
+	and	\tmp, \tmp, #0xf		@ cache line size encoding
+	mov	\reg, #4			@ bytes per word
+	mov	\reg, \reg, lsl \tmp		@ actual cache line size
+	.endm
 
 /*
  * Sanity check the PTE configuration for the code below - which makes
@@ -99,6 +109,10 @@
  *  110x   0   1   0	r/w	r/o
  *  11x0   0   1   0	r/w	r/o
  *  1111   0   1   1	r/w	r/w
+ *
+ * If !CONFIG_CPU_USE_DOMAINS, the following permissions are changed:
+ *  110x   1   1   1	r/o	r/o
+ *  11x0   1   1   1	r/o	r/o
  */
 	.macro	armv6_mt_table pfx
 \pfx\()_mt_table:
@@ -138,8 +152,11 @@
 
 	tst	r1, #L_PTE_USER
 	orrne	r3, r3, #PTE_EXT_AP1
+#ifdef CONFIG_CPU_USE_DOMAINS
+	@ allow kernel read/write access to read-only user pages
 	tstne	r3, #PTE_EXT_APX
 	bicne	r3, r3, #PTE_EXT_APX | PTE_EXT_AP0
+#endif
 
 	tst	r1, #L_PTE_EXEC
 	orreq	r3, r3, #PTE_EXT_XN
